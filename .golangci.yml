@@ -1,0 +1,43 @@
+run:
+    skip-dirs:
+        - operator
+    timeout: 5m
+
+linters-settings:
+    golint:
+        min-confidence: 0.1
+    goimports:
+        local-prefixes: github.com/banzaicloud/bank-vaults
+
+linters:
+    enable-all: true
+    disable:
+        - maligned
+        - funlen
+        - dupl
+        - nestif
+        - wsl
+        - lll
+        - interfacer
+        - exhaustivestruct
+        - nlreturn
+
+        # TODO: fixme
+        - paralleltest
+        - forcetypeassert
+        - wrapcheck
+        - exportloopref
+        - cyclop
+        - godox
+        - godot
+        - gomnd
+        - gochecknoglobals
+        - gochecknoinits
+        - goconst
+        - gocognit
+        - golint
+        - scopelint
+        - gocritic
+        - stylecheck
+        - gocyclo
+        - testpackage

@@ -1,0 +1,10 @@
+Dockerfile*
+.circleci/
+.git/
+bin/
+docs/
+operator/build/
+vendor/
+hack/
+*.yaml
+*.yml

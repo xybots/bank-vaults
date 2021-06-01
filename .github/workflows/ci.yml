@@ -1,0 +1,100 @@
+name: CI
+on: [pull_request]
+env:
+  GO_VERSION: 1.16
+jobs:
+
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    services:
+      vault:
+        image: vault:1.6.2
+        env:
+          SKIP_SETCAP: true
+          VAULT_DEV_ROOT_TOKEN_ID: 227e1cce-6bf7-30bb-2d2a-acc854318caf
+        ports:
+          - 8200:8200
+
+    steps:
+
+    - name: Set up Go
+      uses: actions/setup-go@v1
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Check out code
+      uses: actions/checkout@v1
+
+    - name: Check licenses
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      run: make license-check
+
+    - name: Setup test dependencies
+      run: |
+        sudo apt install opensc softhsm
+        sudo mkdir -p /var/lib/softhsm/tokens/
+        sudo softhsm2-util --init-token --free --label bank-vaults --so-pin banzai --pin banzai
+        sudo pkcs11-tool --module /usr/lib/softhsm/libsofthsm2.so --keypairgen --key-type rsa:2048 --pin banzai --token-label bank-vaults --label bank-vaults
+        sudo chown -R runner:docker /etc/softhsm /var/lib/softhsm
+
+    - name: Run verification
+      run: make check
+      env:
+        VAULT_TOKEN: 227e1cce-6bf7-30bb-2d2a-acc854318caf
+
+    - name: Lint Helm charts
+      uses: helm/chart-testing-action@v1.1.0
+      with:
+        command: lint
+        config: charts/testing.yaml
+
+  acceptance-test:
+    name: Acceptance test
+    runs-on: ubuntu-latest
+    env:
+      KURUN_VERSION: "0.5.3"
+      DOCKER_LATEST: 1
+      VERSION: latest
+
+    steps:
+
+    - name: Set up Go
+      uses: actions/setup-go@v1
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Start kind cluster
+      run: |
+        kind version
+        kind create cluster --config hack/kind.yaml
+
+    - name: Build Docker images
+      run: |
+        make docker
+        make docker-operator
+        make docker-vault-env
+        make docker-webhook
+
+    - name: Load Docker images to kind
+      run: |
+        kind load docker-image ghcr.io/banzaicloud/bank-vaults:latest
+        kind load docker-image ghcr.io/banzaicloud/vault-operator:latest
+        kind load docker-image ghcr.io/banzaicloud/vault-secrets-webhook:latest
+        kind load docker-image ghcr.io/banzaicloud/vault-env:latest
+
+    - name: Install socat and kurun
+      run: |
+        # socat
+        sudo apt install socat
+        # kurun
+        curl -Lo kurun https://github.com/banzaicloud/kurun/releases/download/${KURUN_VERSION}/kurun-linux-amd64 && chmod +x kurun && sudo mv kurun /usr/local/bin/
+
+    - name: Operator and webhook acceptance test
+      run: |
+        hack/acceptance-test.sh
